@@ -30,6 +30,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private val defaultUrl = "http://192.168.1.189:5000/duong-dan-display"
     private var currentUrl = defaultUrl
+    
+    private var lastHtmlContent: String? = null
+    private val checkTimer = java.util.Timer()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -180,6 +183,44 @@ class MainActivity : AppCompatActivity() {
 
         checkPermissionsAndLoad()
         scheduleNightRestart()
+        startHtmlWatcher()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        checkTimer.cancel()
+    }
+
+    private fun startHtmlWatcher() {
+        checkTimer.scheduleAtFixedRate(object : java.util.TimerTask() {
+            override fun run() {
+                try {
+                    if (currentUrl.startsWith("http")) {
+                        val url = java.net.URL(currentUrl)
+                        val connection = url.openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 5000
+                        connection.readTimeout = 5000
+                        connection.requestMethod = "GET"
+                        
+                        if (connection.responseCode == 200) {
+                            val input = connection.inputStream.bufferedReader().use { it.readText() }
+                            if (lastHtmlContent == null) {
+                                lastHtmlContent = input // Lần đầu tiên lưu mẫu
+                            } else if (lastHtmlContent != input) {
+                                Log.d("QMS", "Phát hiện HTML thay đổi, tải lại trang!")
+                                lastHtmlContent = input
+                                runOnUiThread {
+                                    Toast.makeText(this@MainActivity, "🔄 Đã nhận lệnh cập nhật từ Server, đang tải lại màn hình...", Toast.LENGTH_LONG).show()
+                                    webView.reload()
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Bỏ qua lỗi mất kết nối khi đang trinh sát ngầm
+                }
+            }
+        }, 60000, 60000) // Chạy mỗi 60 giây (60000ms)
     }
 
     private lateinit var offlineOverlay: android.widget.LinearLayout
