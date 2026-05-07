@@ -74,21 +74,26 @@ class MainActivity : AppCompatActivity() {
                 
                 override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
                     val urlStr = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
+                    val cleanUrl = urlStr.split("?")[0]
                     
-                    if (urlStr.endsWith(".mp4") || urlStr.endsWith(".webm") || urlStr.endsWith(".mkv")) {
-                        val fileName = urlStr.substringAfterLast("/")
+                    if (cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mkv")) {
+                        val fileName = cleanUrl.substringAfterLast("/")
                         val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
                         if (!qmsDir.exists()) qmsDir.mkdirs()
                         val localFile = File(qmsDir, fileName)
                         
                         if (localFile.exists() && localFile.length() > 0) {
                             try {
-                                val mimeType = if (urlStr.endsWith(".webm")) "video/webm" else "video/mp4"
+                                val mimeType = if (cleanUrl.endsWith(".webm")) "video/webm" else "video/mp4"
                                 return android.webkit.WebResourceResponse(mimeType, "UTF-8", java.io.FileInputStream(localFile))
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         } else {
+                            runOnUiThread {
+                                Toast.makeText(this@MainActivity, "Đang tải ngầm Video: $fileName...", Toast.LENGTH_LONG).show()
+                            }
+                            
                             // Download in background
                             kotlin.concurrent.thread {
                                 try {
@@ -107,6 +112,10 @@ class MainActivity : AppCompatActivity() {
                                     input.close()
                                     tempFile.renameTo(localFile)
                                     Log.d("QMS", "Downloaded video to cache: $fileName")
+                                    
+                                    runOnUiThread {
+                                        Toast.makeText(this@MainActivity, "Đã lưu video offline: $fileName", Toast.LENGTH_LONG).show()
+                                    }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                 }
@@ -120,10 +129,13 @@ class MainActivity : AppCompatActivity() {
 
         val btnConfig = Button(this).apply {
             val size = (60 * resources.displayMetrics.density).toInt()
+            val margin = (20 * resources.displayMetrics.density).toInt()
             layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                gravity = Gravity.TOP or Gravity.END
+                gravity = Gravity.BOTTOM or Gravity.START
+                bottomMargin = margin
+                marginStart = margin
             }
-            alpha = 0.0f
+            alpha = 0.5f // Hiển thị mờ mờ để dễ nhìn
             text = "⚙"
             textSize = 24f
             setTextColor(android.graphics.Color.WHITE)
@@ -132,7 +144,7 @@ class MainActivity : AppCompatActivity() {
             setOnHoverListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_HOVER_ENTER -> v.alpha = 1.0f
-                    MotionEvent.ACTION_HOVER_EXIT -> v.alpha = 0.0f
+                    MotionEvent.ACTION_HOVER_EXIT -> v.alpha = 0.5f
                 }
                 false
             }
@@ -140,7 +152,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 alpha = 1.0f
                 showConfigMenu()
-                postDelayed({ alpha = 0.0f }, 3000) // Ẩn lại sau 3s nếu dùng cảm ứng
+                postDelayed({ alpha = 0.5f }, 3000) // Trở lại mờ mờ sau 3s
             }
         }
 
