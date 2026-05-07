@@ -124,35 +124,46 @@ class MainActivity : AppCompatActivity() {
                     }
                     return super.shouldInterceptRequest(view, request)
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    view?.evaluateJavascript("""
+                        (function() {
+                            var videos = document.getElementsByTagName('video');
+                            for(var i=0; i<videos.length; i++) {
+                                var src = videos[i].src;
+                                if (!src && videos[i].children.length > 0) {
+                                    src = videos[i].children[0].src;
+                                }
+                                if(src && (src.indexOf('.mp4') !== -1 || src.indexOf('.webm') !== -1)) {
+                                    return src;
+                                }
+                            }
+                            return null;
+                        })();
+                    """.trimIndent()) { result ->
+                        if (result != null && result != "null") {
+                            val videoUrl = result.replace("\"", "")
+                            downloadVideoIfNotExists(videoUrl)
+                        }
+                    }
+                }
             }
         }
 
         val btnConfig = Button(this).apply {
-            val size = (60 * resources.displayMetrics.density).toInt()
-            val margin = (20 * resources.displayMetrics.density).toInt()
-            layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                gravity = Gravity.BOTTOM or Gravity.START
-                bottomMargin = margin
-                marginStart = margin
+            val size = (80 * resources.displayMetrics.density).toInt()
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, size).apply {
+                gravity = Gravity.TOP or Gravity.START
             }
-            alpha = 0.5f // Hiển thị mờ mờ để dễ nhìn
-            text = "⚙"
-            textSize = 24f
+            alpha = 1.0f // Hiển thị rõ hoàn toàn 100%
+            text = "CẤU HÌNH"
+            textSize = 16f
             setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#80000000"))
-            
-            setOnHoverListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_HOVER_ENTER -> v.alpha = 1.0f
-                    MotionEvent.ACTION_HOVER_EXIT -> v.alpha = 0.5f
-                }
-                false
-            }
+            setBackgroundColor(android.graphics.Color.RED)
             
             setOnClickListener {
-                alpha = 1.0f
                 showConfigMenu()
-                postDelayed({ alpha = 0.5f }, 3000) // Trở lại mờ mờ sau 3s
             }
         }
 
@@ -161,6 +172,44 @@ class MainActivity : AppCompatActivity() {
         setContentView(frameLayout)
 
         checkPermissionsAndLoad()
+    }
+
+    private fun downloadVideoIfNotExists(urlStr: String) {
+        val cleanUrl = urlStr.split("?")[0]
+        val fileName = cleanUrl.substringAfterLast("/")
+        val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
+        if (!qmsDir.exists()) qmsDir.mkdirs()
+        val localFile = File(qmsDir, fileName)
+        
+        if (!localFile.exists() || localFile.length() == 0L) {
+            runOnUiThread {
+                Toast.makeText(this@MainActivity, "Phát hiện Video mới: $fileName\nĐang tải về QMS_Config...", Toast.LENGTH_LONG).show()
+            }
+            kotlin.concurrent.thread {
+                try {
+                    val tempFile = File(qmsDir, "$fileName.download")
+                    val connection = java.net.URL(urlStr).openConnection()
+                    connection.connect()
+                    val input = connection.getInputStream()
+                    val output = java.io.FileOutputStream(tempFile)
+                    val data = ByteArray(4096)
+                    var count: Int
+                    while (input.read(data).also { count = it } != -1) {
+                        output.write(data, 0, count)
+                    }
+                    output.flush()
+                    output.close()
+                    input.close()
+                    tempFile.renameTo(localFile)
+                    
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "✅ Tải xong Video offline: $fileName", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
     }
 
     private fun checkPermissionsAndLoad() {
