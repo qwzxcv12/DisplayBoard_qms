@@ -8,12 +8,18 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
+import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -22,6 +28,7 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private val defaultUrl = "http://192.168.1.189:5000/duong-dan-display"
+    private var currentUrl = defaultUrl
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +43,12 @@ class MainActivity : AppCompatActivity() {
             startService(serviceIntent)
         }
 
+        val frameLayout = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        }
+
         webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -59,7 +71,34 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        setContentView(webView)
+
+        val btnConfig = ImageButton(this).apply {
+            val size = (60 * resources.displayMetrics.density).toInt()
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.TOP or Gravity.END
+            }
+            alpha = 0.0f
+            setBackgroundResource(android.R.drawable.btn_default)
+            setImageResource(android.R.drawable.ic_menu_preferences)
+            
+            setOnHoverListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_HOVER_ENTER -> v.alpha = 1.0f
+                    MotionEvent.ACTION_HOVER_EXIT -> v.alpha = 0.0f
+                }
+                false
+            }
+            
+            setOnClickListener {
+                alpha = 1.0f
+                showConfigMenu()
+                postDelayed({ alpha = 0.0f }, 3000) // Ẩn lại sau 3s nếu dùng cảm ứng
+            }
+        }
+
+        frameLayout.addView(webView)
+        frameLayout.addView(btnConfig)
+        setContentView(frameLayout)
 
         checkPermissionsAndLoad()
     }
@@ -93,6 +132,7 @@ class MainActivity : AppCompatActivity() {
                 val match = Regex("<url>(.*?)</url>").find(content)
                 if (match != null && match.groupValues.size > 1) {
                     finalUrl = match.groupValues[1].trim()
+                    currentUrl = finalUrl
                     Toast.makeText(this, "Đã đọc cấu hình: $finalUrl", Toast.LENGTH_LONG).show()
                 }
             } else {
@@ -107,6 +147,69 @@ class MainActivity : AppCompatActivity() {
             Log.e("QMS", "Lỗi đọc file: ${e.message}")
         }
         webView.loadUrl(finalUrl)
+    }
+
+    private fun showConfigMenu() {
+        val options = arrayOf("Tải lại trang (Refresh)", "Cấu hình đường dẫn")
+        AlertDialog.Builder(this)
+            .setTitle("Tuỳ chọn")
+            .setItems(options) { _, which ->
+                if (which == 0) {
+                    Toast.makeText(this, "Đang tải lại giao diện...", Toast.LENGTH_SHORT).show()
+                    loadConfig()
+                } else {
+                    showPasswordDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun showPasswordDialog() {
+        val input = EditText(this)
+        input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        input.hint = "Nhập mật khẩu"
+
+        AlertDialog.Builder(this)
+            .setTitle("Yêu cầu mật khẩu")
+            .setView(input)
+            .setPositiveButton("Xác nhận") { _, _ ->
+                if (input.text.toString() == "2024") {
+                    showEditUrlDialog()
+                } else {
+                    Toast.makeText(this, "Sai mật khẩu!", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Huỷ", null)
+            .show()
+    }
+
+    private fun showEditUrlDialog() {
+        val input = EditText(this)
+        input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        input.setText(currentUrl)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Cấu hình URL hệ thống")
+            .setView(input)
+            .setPositiveButton("Lưu") { _, _ ->
+                val newUrl = input.text.toString().trim()
+                saveUrlToConfig(newUrl)
+                loadConfig()
+            }
+            .setNegativeButton("Huỷ", null)
+            .show()
+    }
+
+    private fun saveUrlToConfig(newUrl: String) {
+        try {
+            val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
+            if (!qmsDir.exists()) qmsDir.mkdirs()
+            val file = File(qmsDir, "qms_config.xml")
+            file.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<config>\n    <!-- Thay doi url duong dan o ben duoi -->\n    <url>$newUrl</url>\n</config>")
+            Toast.makeText(this, "Lưu thành công!", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Lỗi khi lưu: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
