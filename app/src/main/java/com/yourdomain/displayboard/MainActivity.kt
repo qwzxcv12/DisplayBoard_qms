@@ -15,9 +15,10 @@ import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
                 cacheMode = WebSettings.LOAD_NO_CACHE
             }
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
                     super.onReceivedError(view, request, error)
@@ -69,17 +71,63 @@ class MainActivity : AppCompatActivity() {
                         view?.postDelayed({ loadConfig() }, 5000)
                     }
                 }
+                
+                override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
+                    val urlStr = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
+                    
+                    if (urlStr.endsWith(".mp4") || urlStr.endsWith(".webm") || urlStr.endsWith(".mkv")) {
+                        val fileName = urlStr.substringAfterLast("/")
+                        val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
+                        if (!qmsDir.exists()) qmsDir.mkdirs()
+                        val localFile = File(qmsDir, fileName)
+                        
+                        if (localFile.exists() && localFile.length() > 0) {
+                            try {
+                                val mimeType = if (urlStr.endsWith(".webm")) "video/webm" else "video/mp4"
+                                return android.webkit.WebResourceResponse(mimeType, "UTF-8", java.io.FileInputStream(localFile))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        } else {
+                            // Download in background
+                            kotlin.concurrent.thread {
+                                try {
+                                    val tempFile = File(qmsDir, "$fileName.download")
+                                    val connection = java.net.URL(urlStr).openConnection()
+                                    connection.connect()
+                                    val input = connection.getInputStream()
+                                    val output = java.io.FileOutputStream(tempFile)
+                                    val data = ByteArray(4096)
+                                    var count: Int
+                                    while (input.read(data).also { count = it } != -1) {
+                                        output.write(data, 0, count)
+                                    }
+                                    output.flush()
+                                    output.close()
+                                    input.close()
+                                    tempFile.renameTo(localFile)
+                                    Log.d("QMS", "Downloaded video to cache: $fileName")
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                        }
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
             }
         }
 
-        val btnConfig = ImageButton(this).apply {
+        val btnConfig = Button(this).apply {
             val size = (60 * resources.displayMetrics.density).toInt()
             layoutParams = FrameLayout.LayoutParams(size, size).apply {
                 gravity = Gravity.TOP or Gravity.END
             }
             alpha = 0.0f
-            setBackgroundResource(android.R.drawable.btn_default)
-            setImageResource(android.R.drawable.ic_menu_preferences)
+            text = "⚙"
+            textSize = 24f
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.parseColor("#80000000"))
             
             setOnHoverListener { v, event ->
                 when (event.action) {
