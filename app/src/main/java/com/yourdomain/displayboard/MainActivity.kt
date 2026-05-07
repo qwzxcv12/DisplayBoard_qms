@@ -44,7 +44,20 @@ class MainActivity : AppCompatActivity() {
                 cacheMode = WebSettings.LOAD_NO_CACHE
             }
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) {
+                        view?.postDelayed({ loadConfig() }, 5000)
+                    }
+                }
+                override fun onReceivedHttpError(view: WebView?, request: android.webkit.WebResourceRequest?, errorResponse: android.webkit.WebResourceResponse?) {
+                    super.onReceivedHttpError(view, request, errorResponse)
+                    if (request?.isForMainFrame == true) {
+                        view?.postDelayed({ loadConfig() }, 5000)
+                    }
+                }
+            }
         }
         setContentView(webView)
 
@@ -94,5 +107,17 @@ class MainActivity : AppCompatActivity() {
             Log.e("QMS", "Lỗi đọc file: ${e.message}")
         }
         webView.loadUrl(finalUrl)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // Nút OK, Enter hoặc Play/Pause trên remote TV Box
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || 
+            keyCode == android.view.KeyEvent.KEYCODE_ENTER || 
+            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            Toast.makeText(this, "Đang tải lại giao diện...", Toast.LENGTH_SHORT).show()
+            loadConfig()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
