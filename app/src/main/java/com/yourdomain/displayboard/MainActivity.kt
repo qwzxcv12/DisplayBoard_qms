@@ -65,8 +65,11 @@ class MainActivity : AppCompatActivity() {
                 builtInZoomControls = false
                 displayZoomControls = false
                 textZoom = 100
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                setSupportZoom(false)
                 userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
+            setInitialScale(100)
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
@@ -150,6 +153,16 @@ class MainActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     runOnUiThread { hideOfflineOverlay() }
+                    
+                    view?.evaluateJavascript("""
+                        (function() {
+                            document.documentElement.style.setProperty(
+                                '--app-height', window.innerHeight + 'px'
+                            );
+                            document.body.style.zoom = '1';
+                        })();
+                    """.trimIndent(), null)
+                    
                     view?.evaluateJavascript("""
                         (function() {
                             var videos = document.getElementsByTagName('video');
