@@ -60,6 +60,10 @@ class MainActivity : AppCompatActivity() {
                 domStorageEnabled = true
                 mediaPlaybackRequiresUserGesture = false
                 cacheMode = WebSettings.LOAD_NO_CACHE
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                textZoom = 100
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
             webChromeClient = WebChromeClient()
