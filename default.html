@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>BẢNG HIỂN THỊ TRUNG TÂM - {{ unit_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%; font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f4f7f6; color: #2c3e50; overflow: hidden;
+        }
+        .screen { display: flex; flex-direction: column; height: 100vh; }
+
+        /* Header */
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #ffffff; box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            padding: 15px 30px; flex-shrink: 0; z-index: 10; position: relative;
+        }
+        .header-center {
+            position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            display: flex; align-items: center; gap: 15px;
+        }
+        .header-logo { max-height: 50px; width: auto; object-fit: contain; }
+        .unit-name { font-size: 2em; font-weight: 700; color: #1a252f; text-transform: uppercase; }
+        .header-right { margin-left: auto; text-align: right; }
+        .header-clock { font-size: 2.2em; font-weight: 600; color: #d4af37; line-height: 1; }
+        .header-date { font-size: 0.9em; color: #7f8c8d; font-weight: 500; margin-top: 4px; }
+
+        /* Main */
+        .main {
+            flex: 1; display: grid; grid-template-columns: 55% 45%;
+            gap: 20px; padding: 20px; overflow: hidden;
+        }
+
+        /* Media */
+        .panel-media {
+            background: #000; border-radius: 16px; overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1); display: flex;
+            align-items: center; justify-content: center;
+        }
+        .panel-media video, .panel-media img { width: 100%; height: 100%; object-fit: cover; }
+        .default-media-text { color: #fff; font-size: 2.5em; font-weight: 300; letter-spacing: 0.1em; }
+
+        /* Calling List */
+        .panel-calling {
+            background: #ffffff; border-radius: 16px; box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; overflow: hidden; border: 1px solid #eef2f5;
+        }
+        .panel-title {
+            font-size: 1.1em; font-weight: 700; text-transform: uppercase; color: #ffffff;
+            padding: 15px 20px; background: linear-gradient(135deg, #2c3e50, #34495e); text-align: center;
+        }
+        .list-header {
+            display: flex; background: #eaeded; padding: 12px 15px;
+            font-weight: 700; font-size: 1em; color: #34495e; border-bottom: 2px solid #bdc3c7;
+        }
+        .list-header > div, .ticket-row > div { flex: 1; text-align: center; }
+        .list-header .col-left, .ticket-row .col-left { text-align: left; flex: 1.2; }
+        .list-header .col-right, .ticket-row .col-right { text-align: right; }
+
+        .calling-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .calling-list::-webkit-scrollbar { width: 6px; }
+        .calling-list::-webkit-scrollbar-track { background: #f1f1f1; }
+        .calling-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+
+        .ticket-row {
+            display: flex; align-items: center; padding: 15px; border-bottom: 1px dashed #ecf0f1;
+            font-size: 1.2em; font-weight: 600; transition: all 0.3s ease;
+        }
+        .ticket-row .col-left   { color: #2c3e50; font-weight: 700; text-transform: uppercase; }
+        .ticket-row .col-current{ font-size: 1.8em; color: #d35400; font-weight: 800; }
+        .ticket-row .col-right  { color: #7f8c8d; font-size: 1.4em; }
+
+        .ticket-row.new-call { animation: rowFlash 1.5s ease-out 3; background: #fff9e6; }
+        @keyframes rowFlash {
+            0%, 100% { background: #fff; }
+            50%       { background: #fdebd0; transform: scale(1.02); }
+        }
+
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; color: #bdc3c7;
+        }
+        .empty-state i { font-size: 3em; margin-bottom: 10px; }
+
+        /* Marquee */
+        .marquee-wrapper {
+            background: #d35400; color: #fff; padding: 8px 0; font-size: 1.2em;
+            font-weight: 600; overflow: hidden; white-space: nowrap; flex-shrink: 0;
+        }
+        .marquee-text {
+            display: inline-block; padding-left: 100%;
+            animation: marquee 25s linear infinite;
+        }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+
+        /* Footer */
+        .footer {
+            background: #ffffff; border-top: 1px solid #eef2f5; padding: 8px 30px;
+            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+        }
+        .ws-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #bdc3c7; transition: 0.5s;
+        }
+        .ws-dot.connected {
+            background: #2ecc71; box-shadow: 0 0 8px rgba(46,204,113,0.5);
+            animation: blink-dot 2s infinite;
+        }
+        .ws-dot.error { background: #e74c3c; }
+        @keyframes blink-dot {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.4; }
+        }
+
+        /* Audio Btn */
+        #unmuteBtn {
+            position: fixed; top: 10px; left: 10px; background: #ef4444; color: white;
+            border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold;
+            font-size: 14px; cursor: pointer; z-index: 99999; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: none; opacity: 0.9; transition: opacity 0.3s;
+        }
+        #unmuteBtn:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+
+<button id="unmuteBtn"><i class="fas fa-volume-up"></i> Bật âm thanh</button>
+
+<div class="screen">
+    <div class="header">
+        <div class="header-center">
+            {% if logo_filename %}
+                <img src="{{ url_for('serve_upload', filepath=logo_filename) }}" class="header-logo" alt="Logo" onerror="this.style.display='none'">
+            {% else %}
+                <img src="{{ url_for('static', filename='img/logo.png') }}" class="header-logo" alt="Logo" onerror="this.style.display='none'">
+            {% endif %}
+            <div class="unit-name">{{ unit_name }}</div>
+        </div>
+        <div class="header-right">
+            <div class="header-clock" id="clock">00:00:00</div>
+            <div class="header-date" id="date-display"></div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="panel-media">
+            {% if media_filename %}
+                {% if media_filename.endswith('.mp4') or media_filename.endswith('.webm') %}
+                    <video src="{{ url_for('serve_upload', filepath=media_filename) }}" autoplay loop muted></video>
+                {% else %}
+                    <img src="{{ url_for('serve_upload', filepath=media_filename) }}" alt="Media">
+                {% endif %}
+            {% else %}
+                <div class="default-media-text">KÍNH CHÀO QUÝ KHÁCH</div>
+            {% endif %}
+        </div>
+
+        <div class="panel-calling">
+            <div class="panel-title"><i class="fas fa-bell" style="color:#f1c40f;"></i> BẢNG THÔNG TIN</div>
+            <div class="list-header">
+                <div class="col-left">Tên quầy</div>
+                <div class="col-current">Đang phục vụ</div>
+                <div class="col-right">Tiếp theo</div>
+            </div>
+            <div class="calling-list" id="calling-list">
+                <div class="empty-state" id="empty-calling">
+                    <i class="far fa-smile-beam"></i>
+                    <p>Hiện chưa có số nào được gọi</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="marquee-wrapper">
+        <div class="marquee-text">
+            Kính chào quý khách đến với {{ unit_name }}. Quý khách vui lòng lấy số thứ tự, ổn định chỗ ngồi và chú ý lắng nghe thông báo gọi số. Xin trân trọng cảm ơn!
+        </div>
+    </div>
+
+    <div class="footer">
+        <div style="color:#95a5a6; font-size:0.85em;">Bảng hiển thị số thứ tự trung tâm</div>
+        <div style="display:flex; align-items:center; gap:8px; font-size:0.85em; color:#7f8c8d;">
+            <div class="ws-dot" id="ws-dot"></div>
+            <span id="ws-label">Đang kết nối...</span>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==============================================
+// INIT VARS
+// ==============================================
+const UNIT_ID        = {{ unit_id }};
+const TTS_AUTH_TOKEN = "{{ generate_tts_token() }}";
+const WS_SERVER      = window.location.origin;
+
+const DISPLAY_ID = (() => {
+    const key = `display_id_unit_${UNIT_ID}`;
+    let id = localStorage.getItem(key);
+    if (!id) {
+        id = 'disp_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem(key, id);
+    }
+    return id;
+})();
+
+let callingTickets  = {};   // { counter_id: ticketObj }
+let audioUnlocked   = false;
+let audioQueue      = [];
+let isPlayingAudio  = false;
+let isInitialLoad   = true;
+
+// DOM
+const callingListEl = document.getElementById('calling-list');
+const emptyCallingEl= document.getElementById('empty-calling');
+const wsDot         = document.getElementById('ws-dot');
+const wsLabel       = document.getElementById('ws-label');
+const unmuteBtn     = document.getElementById('unmuteBtn');
+
+// ==============================================
+// CLOCK
+// ==============================================
+setInterval(() => {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('vi-VN', { hour12: false });
+    document.getElementById('date-display').textContent = now.toLocaleDateString('vi-VN', {
+        weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+}, 1000);
+
+// ==============================================
+// AUDIO UNLOCK
+// ==============================================
+function autoUnlockAudio() {
+    const silent = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+    silent.volume = 0;
+    silent.play().then(() => {
+        audioUnlocked = true;
+        unmuteBtn.style.display = 'none';
+    }).catch(() => {
+        unmuteBtn.style.display = 'block';
+    });
+}
+
+unmuteBtn.addEventListener('click', () => {
+    const silent = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+    silent.play().then(() => {
+        audioUnlocked = true;
+        unmuteBtn.style.display = 'none';
+        if (!isPlayingAudio && audioQueue.length > 0) processAudioQueue();
+    });
+});
+
+// ==============================================
+// AUDIO QUEUE
+// ==============================================
+function enqueueAudio(text) {
+    if (audioQueue.length >= 5) audioQueue.shift();
+    audioQueue.push(text);
+    if (!isPlayingAudio) processAudioQueue();
+}
+
+async function processAudioQueue() {
+    if (audioQueue.length === 0) { isPlayingAudio = false; return; }
+    isPlayingAudio = true;
+    const text = audioQueue.shift();
+    try {
+        const controller = new AbortController();
+        const timeoutId  = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(
+            `/api/tts/sign?text=${encodeURIComponent(text)}&voice=vi-VN-Wavenet-A&token=${TTS_AUTH_TOKEN}&display_id=${DISPLAY_ID}`,
+            { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+        if (!res.ok) return processAudioQueue();
+        const data = await res.json();
+        if (!data.url) return processAudioQueue();
+
+        const audio = new Audio(data.url);
+        audio.onended = () => processAudioQueue();
+        audio.onerror = () => processAudioQueue();
+        audio.play().catch(e => {
+            if (e.name === 'NotAllowedError') {
+                audioQueue.unshift(text);
+                isPlayingAudio = false;
+                if (!audioUnlocked) unmuteBtn.style.display = 'block';
+            } else {
+                processAudioQueue();
+            }
+        });
+    } catch (e) {
+        processAudioQueue();
+    }
+}
+
+// ==============================================
+// RENDER UI
+// ==============================================
+function renderCalling() {
+    const tickets   = Object.values(callingTickets);
+    const activeIds = new Set(tickets.map(t => String(t.counter_id)));
+
+    // Xóa row không còn trong danh sách
+    document.querySelectorAll('.ticket-row').forEach(row => {
+        if (!activeIds.has(row.dataset.counterId)) row.remove();
+    });
+
+    emptyCallingEl.style.display = tickets.length === 0 ? 'flex' : 'none';
+
+    tickets.forEach(t => {
+        let row = document.querySelector(`.ticket-row[data-counter-id="${t.counter_id}"]`);
+        if (!row) {
+            row = document.createElement('div');
+            row.className          = 'ticket-row';
+            row.dataset.counterId  = t.counter_id;
+            row.innerHTML = `
+                <div class="col-left t-name"></div>
+                <div class="col-current t-current"></div>
+                <div class="col-right t-next"></div>`;
+            callingListEl.appendChild(row);
+        }
+        row.querySelector('.t-name').textContent    = t.counter_name;
+        row.querySelector('.t-current').textContent = t.ticket_number;
+        row.querySelector('.t-next').textContent    = (t.next_ticket && t.next_ticket.trim() !== '') ? t.next_ticket : '---';
+    });
+}
+
+function flashRow(counterId) {
+    const row = document.querySelector(`.ticket-row[data-counter-id="${counterId}"]`);
+    if (row) {
+        row.classList.remove('new-call');
+        void row.offsetWidth;
+        row.classList.add('new-call');
+    }
+}
+
+// ==============================================
+// XỬ LÝ DATA TỪ POLLING (/api/public_display/...)
+// Format: { calling_tickets: [ { counter_id, counter_name, ticket_number, next_ticket, status } ] }
+// ==============================================
+function processTicketUpdate(payload) {
+    const incoming = payload.calling_tickets || [];
+
+    incoming.forEach(t => {
+        const prev  = callingTickets[t.counter_id];
+        const isNew = !prev || prev.ticket_number !== t.ticket_number;
+        callingTickets[t.counter_id] = t;
+
+        if (isNew && t.status === 'CALLING' && !isInitialLoad) {
+            renderCalling();
+            flashRow(t.counter_id);
+            setTimeout(() => enqueueAudio(`Mời số thứ tự ${t.ticket_number}, đến ${t.counter_name}`), 1000);
+        }
+    });
+
+    // Xóa quầy không còn trong danh sách
+    const incomingIds = new Set(incoming.map(t => String(t.counter_id)));
+    Object.keys(callingTickets).forEach(cid => {
+        if (!incomingIds.has(cid)) delete callingTickets[cid];
+    });
+
+    renderCalling();
+}
+
+
+async function processRealtimeEvent(payload) {
+    const ticketData   = payload.data || {};
+    const counterId    = payload.counter_id || ticketData.counter_id;
+    const unitId       = ticketData.unit_id;
+    const ticketNumber = ticketData.ticket_number;
+    // ✅ Lấy hành động từ backend (call, recall, priority)
+    const action       = ticketData.action;
+
+    if (unitId && parseInt(unitId) !== parseInt(UNIT_ID)) return;
+    if (!ticketNumber || !counterId) return;
+
+    console.log(`🔔 [Realtime] Action: ${action} | Số ${ticketNumber} → Quầy ${counterId}`);
+
+    const prev  = callingTickets[counterId];
+    
+    // ✅ Điều kiện phát âm thanh: Số mới HOẶC hành động là gọi lại/ưu tiên
+    const isNew = !prev || prev.ticket_number !== ticketNumber;
+    const isRecall = (action === 'recall' || action === 'priority'); 
+
+    // ✅ Cập nhật tạm thời để render UI ngay
+    callingTickets[counterId] = {
+        counter_id:    counterId,
+        counter_name:  (prev && prev.counter_name) || `Quầy ${counterId}`,
+        ticket_number: ticketNumber,
+        next_ticket:   prev ? prev.next_ticket : '---',
+        status:        'CALLING'
+    };
+    
+    renderCalling();
+    
+    // Hiệu ứng chớp nháy hàng khi có thông báo mới
+    if (isNew || isRecall) flashRow(counterId);
+
+    // ✅ Xử lý âm thanh
+    if (isNew || isRecall) {
+        // Fetch API để cập nhật dữ liệu chính xác (tên quầy, số tiếp theo...) từ DB
+        await fetchInitialData(true);
+        
+        const updated = callingTickets[counterId];
+        const counterName = (updated && updated.counter_name) || (prev && prev.counter_name) || `Quầy ${counterId}`;
+        
+        // Đưa vào hàng đợi âm thanh
+        setTimeout(() => {
+            enqueueAudio(`Mời số thứ tự ${ticketNumber}, đến ${counterName}`);
+        }, 500);
+    }
+}
+// ==============================================
+// FETCH INITIAL / REFRESH DATA
+// ==============================================
+async function fetchInitialData(silent = false) {
+    try {
+        const res  = await fetch(`/api/public_display/unit/${UNIT_ID}?t=${Date.now()}`);
+        const data = await res.json();
+        if (data.success) {
+            processTicketUpdate(data);
+            if (!silent) isInitialLoad = false;
+        }
+    } catch (e) {
+        console.error("Fetch lỗi:", e);
+    }
+}
+
+// ==============================================
+// SOCKET.IO
+// ==============================================
+function initWebSocket() {
+    const socket = io(WS_SERVER, { transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => {
+        wsDot.className     = 'ws-dot connected';
+        wsLabel.textContent = 'Đã kết nối';
+        socket.emit('join_unit_room', { unit_id: UNIT_ID });
+        fetchInitialData().then(() => { isInitialLoad = false; });
+        console.log('✅ Socket.IO connected');
+    });
+
+    socket.on('disconnect', () => {
+        wsDot.className     = 'ws-dot error';
+        wsLabel.textContent = 'Mất kết nối';
+        console.warn('⚠️ Socket.IO mất kết nối');
+    });
+
+    // ✅ Event từ Flask polling cũ (update_tickets) — giữ lại tương thích
+    socket.on('update_tickets', p => {
+        if (p && p.success) processTicketUpdate(p);
+    });
+
+    // ✅ Event mới từ FastAPI Pusher → Redis → Flask → Socket.IO
+    socket.on('ticket_update', p => {
+        if (!p) return;
+
+        // FastAPI pusher gửi: { event, service_id, counter_id, data: { ticket_number, unit_id, ... } }
+        if (p.event === 'ticket_called' && p.data) {
+            processRealtimeEvent(p);
+            return;
+        }
+
+        // Fallback: format cũ có unit_id trực tiếp
+        if (p.unit_id && parseInt(p.unit_id) === parseInt(UNIT_ID)) {
+            fetchInitialData(true);
+        }
+    });
+
+    return socket;
+}
+
+// ==============================================
+// BOOT
+// ==============================================
+document.addEventListener('DOMContentLoaded', () => {
+    autoUnlockAudio();
+    fetchInitialData().then(() => { isInitialLoad = false; });
+    const socket = initWebSocket();
+
+    // Fallback polling nếu socket không kết nối được sau 10 giây
+    setTimeout(() => {
+        if (!socket.connected) {
+            console.warn('⚠️ Socket không kết nối được, bật fallback polling 5 giây');
+            setInterval(() => fetchInitialData(true), 5000);
+        }
+    }, 10000);
+});
+</script>
+</body>
+</html>
