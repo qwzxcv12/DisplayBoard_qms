@@ -55,6 +55,11 @@ class MainActivity : AppCompatActivity() {
 
         webView = WebView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            
+            // Chặn người dùng bôi đen (highlight) và nhấn giữ trên trang web
+            setOnLongClickListener { true }
+            isLongClickable = false
+            
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
