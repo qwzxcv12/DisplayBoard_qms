@@ -34,8 +34,10 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashHandler(this)
         
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemUI()
 
         val serviceIntent = Intent(this, KeepAliveService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -62,12 +64,14 @@ class MainActivity : AppCompatActivity() {
                 override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
+                        runOnUiThread { showOfflineOverlay() }
                         view?.postDelayed({ loadConfig() }, 5000)
                     }
                 }
                 override fun onReceivedHttpError(view: WebView?, request: android.webkit.WebResourceRequest?, errorResponse: android.webkit.WebResourceResponse?) {
                     super.onReceivedHttpError(view, request, errorResponse)
                     if (request?.isForMainFrame == true) {
+                        runOnUiThread { showOfflineOverlay() }
                         view?.postDelayed({ loadConfig() }, 5000)
                     }
                 }
@@ -127,6 +131,7 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    runOnUiThread { hideOfflineOverlay() }
                     view?.evaluateJavascript("""
                         (function() {
                             var videos = document.getElementsByTagName('video');
@@ -169,9 +174,83 @@ class MainActivity : AppCompatActivity() {
 
         frameLayout.addView(webView)
         frameLayout.addView(btnConfig)
+        
+        createOfflineOverlay(frameLayout)
         setContentView(frameLayout)
 
         checkPermissionsAndLoad()
+        scheduleNightRestart()
+    }
+
+    private lateinit var offlineOverlay: android.widget.LinearLayout
+
+    private fun createOfflineOverlay(parent: FrameLayout) {
+        offlineOverlay = android.widget.LinearLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.BLACK)
+            visibility = View.GONE
+            
+            val tvMsg = android.widget.TextView(this@MainActivity).apply {
+                text = "Hệ thống đang tải hoặc mất kết nối...\nVui lòng chờ trong giây lát."
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 36f
+                gravity = Gravity.CENTER
+            }
+            addView(tvMsg)
+        }
+        parent.addView(offlineOverlay)
+    }
+
+    private fun showOfflineOverlay() {
+        offlineOverlay.visibility = View.VISIBLE
+    }
+
+    private fun hideOfflineOverlay() {
+        offlineOverlay.visibility = View.GONE
+    }
+
+    private fun hideSystemUI() {
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemUI()
+    }
+
+    override fun onBackPressed() {
+        // Chặn phím Back để làm Kiosk Mode
+    }
+
+    private fun scheduleNightRestart() {
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmManager = getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+        val calendar = java.util.Calendar.getInstance().apply {
+            timeInMillis = System.currentTimeMillis()
+            set(java.util.Calendar.HOUR_OF_DAY, 2)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+        }
+        if (calendar.timeInMillis < System.currentTimeMillis()) {
+            calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        alarmManager.setRepeating(
+            android.app.AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            android.app.AlarmManager.INTERVAL_DAY,
+            pendingIntent
+        )
     }
 
     private fun downloadVideoIfNotExists(urlStr: String) {
