@@ -82,8 +82,10 @@ class MainActivity : AppCompatActivity() {
                 override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
                     val urlStr = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
                     val cleanUrl = urlStr.split("?")[0]
+                    val isVideo = cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mkv")
+                    val isAudio = cleanUrl.endsWith(".mp3") || cleanUrl.endsWith(".wav") || cleanUrl.endsWith(".ogg")
                     
-                    if (cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mkv")) {
+                    if (isVideo || isAudio) {
                         val fileName = cleanUrl.substringAfterLast("/")
                         val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
                         if (!qmsDir.exists()) qmsDir.mkdirs()
@@ -91,14 +93,21 @@ class MainActivity : AppCompatActivity() {
                         
                         if (localFile.exists() && localFile.length() > 0) {
                             try {
-                                val mimeType = if (cleanUrl.endsWith(".webm")) "video/webm" else "video/mp4"
+                                val mimeType = when {
+                                    cleanUrl.endsWith(".webm") -> "video/webm"
+                                    cleanUrl.endsWith(".mp4") -> "video/mp4"
+                                    cleanUrl.endsWith(".mp3") -> "audio/mpeg"
+                                    cleanUrl.endsWith(".wav") -> "audio/wav"
+                                    cleanUrl.endsWith(".ogg") -> "audio/ogg"
+                                    else -> "application/octet-stream"
+                                }
                                 return android.webkit.WebResourceResponse(mimeType, "UTF-8", java.io.FileInputStream(localFile))
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         } else {
                             runOnUiThread {
-                                Toast.makeText(this@MainActivity, "Đang tải ngầm Video: $fileName...", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, "Đang tải ngầm Media: $fileName...", Toast.LENGTH_LONG).show()
                             }
                             
                             // Download in background
@@ -118,10 +127,10 @@ class MainActivity : AppCompatActivity() {
                                     output.close()
                                     input.close()
                                     tempFile.renameTo(localFile)
-                                    Log.d("QMS", "Downloaded video to cache: $fileName")
+                                    Log.d("QMS", "Downloaded media to cache: $fileName")
                                     
                                     runOnUiThread {
-                                        Toast.makeText(this@MainActivity, "Đã lưu video offline: $fileName", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(this@MainActivity, "Đã lưu offline: $fileName", Toast.LENGTH_LONG).show()
                                     }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
