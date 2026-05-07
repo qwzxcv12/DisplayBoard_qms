@@ -15,12 +15,12 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: '8.4' # Use a standard gradle version for Android 34
+        gradle-version: '8.4' 
+        cache-disabled: true
 
     - name: Build Debug APK
       run: gradle assembleDebug
