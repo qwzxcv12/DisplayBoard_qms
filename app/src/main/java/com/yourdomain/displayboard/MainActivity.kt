@@ -70,8 +70,11 @@ class MainActivity : AppCompatActivity() {
     private fun loadConfig() {
         var finalUrl = defaultUrl
         try {
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val file = File(downloadDir, "qms_config.xml")
+            val qmsDir = File(Environment.getExternalStorageDirectory(), "QMS_Config")
+            if (!qmsDir.exists()) {
+                qmsDir.mkdirs()
+            }
+            val file = File(qmsDir, "qms_config.xml")
             if (file.exists()) {
                 val content = file.readText()
                 val match = Regex("<url>(.*?)</url>").find(content)
@@ -82,7 +85,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 try {
                     file.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<config>\n    <!-- Thay doi url duong dan o ben duoi -->\n    <url>$defaultUrl</url>\n</config>")
-                    Toast.makeText(this, "Đã tạo file cấu hình tại mục Download", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Đã tạo file cấu hình tại mục QMS_Config", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
                     Log.e("QMS", "Không thể tạo file mẫu: ${e.message}")
                 }
